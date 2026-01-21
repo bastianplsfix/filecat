@@ -1,5 +1,5 @@
 import { parseArgs } from "@std/cli/parse-args";
-import { blue, bold, dim, green, setNoColor, yellow } from "./colors.ts";
+import { bold, dim, green, setNoColor, yellow } from "./colors.ts";
 import type { BundleOptions } from "./types.ts";
 import { discoverFiles } from "./discovery.ts";
 import { bundleFiles, outputBundle } from "./bundler.ts";
@@ -89,6 +89,10 @@ ${bold(yellow("INTERACTIVE CONTROLS:"))}
   ${dim("[↑/↓]")}    Navigate
   ${dim("[←]")}      Collapse folder
   ${dim("[→]")}      Expand folder
+  ${dim("[e]")}      Expand all folders
+  ${dim("[c]")}      Collapse all folders
+  ${dim("[f]")}      Jump to next folder
+  ${dim("[F]")}      Jump to previous folder
   ${dim("[o]")}      Cycle output mode (stdout → clipboard → file)
   ${dim("[enter]")}  Confirm selection
   ${dim("[q]")}      Quit

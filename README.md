@@ -95,6 +95,10 @@ filecat src
 | `↑` / `↓` | Navigate |
 | `←` | Collapse folder |
 | `→` | Expand folder |
+| `e` | Expand all folders |
+| `c` | Collapse all folders |
+| `f` | Jump to next folder |
+| `F` | Jump to previous folder |
 | `o` | Cycle output mode (stdout → clipboard → file) |
 | `enter` | Confirm selection |
 | `q` | Quit |

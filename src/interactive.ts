@@ -177,6 +177,56 @@ function allSelected(items: TreeItem[]): boolean {
 }
 
 /**
+ * Expand or collapse all folders
+ */
+function setAllExpanded(items: TreeItem[], expanded: boolean) {
+  for (const item of items) {
+    if (item.isDirectory) {
+      item.expanded = expanded;
+      if (item.children) {
+        setAllExpanded(item.children, expanded);
+      }
+    }
+  }
+}
+
+/**
+ * Find next folder index in flat list
+ */
+function findNextFolder(flatItems: TreeItem[], currentIndex: number): number {
+  for (let i = currentIndex + 1; i < flatItems.length; i++) {
+    if (flatItems[i].isDirectory) {
+      return i;
+    }
+  }
+  // Wrap around to beginning
+  for (let i = 0; i < currentIndex; i++) {
+    if (flatItems[i].isDirectory) {
+      return i;
+    }
+  }
+  return currentIndex;
+}
+
+/**
+ * Find previous folder index in flat list
+ */
+function findPrevFolder(flatItems: TreeItem[], currentIndex: number): number {
+  for (let i = currentIndex - 1; i >= 0; i--) {
+    if (flatItems[i].isDirectory) {
+      return i;
+    }
+  }
+  // Wrap around to end
+  for (let i = flatItems.length - 1; i > currentIndex; i--) {
+    if (flatItems[i].isDirectory) {
+      return i;
+    }
+  }
+  return currentIndex;
+}
+
+/**
  * Get selected files from tree
  */
 function getSelectedFiles(items: TreeItem[], cwd: string): BundleFile[] {
@@ -231,8 +281,16 @@ function render(
   lines.push("");
   lines.push(bold(" filecat ") + dim("- Select files to concatenate"));
   lines.push("");
-  lines.push(dim(" [space] toggle  [a] toggle all  [enter] confirm  [q] quit"));
-  lines.push(dim(" [↑/↓] navigate  [←/→] collapse/expand  [o] output mode"));
+  lines.push(
+    dim(
+      " [space] toggle  [a] toggle all  [o] output mode  [enter] confirm  [q] quit",
+    ),
+  );
+  lines.push(
+    dim(
+      " [↑/↓] navigate  [←/→] collapse/expand  [e] expand all  [c] collapse all  [f/F] jump folder",
+    ),
+  );
   lines.push("");
   lines.push(" Output: " + formatOutputMode(outputMode));
   lines.push("");
@@ -400,18 +458,18 @@ export async function runInteractive(
         toggleAll(tree, !allSel);
       }
 
-      if (input === "\x1b[A" || input === "k") {
-        // Up arrow or k
+      if (input === "\x1b[A") {
+        // Up arrow
         cursorIndex = Math.max(0, cursorIndex - 1);
       }
 
-      if (input === "\x1b[B" || input === "j") {
-        // Down arrow or j
+      if (input === "\x1b[B") {
+        // Down arrow
         cursorIndex = Math.min(flatItems.length - 1, cursorIndex + 1);
       }
 
-      if (input === "\x1b[D" || input === "h") {
-        // Left arrow or h - collapse
+      if (input === "\x1b[D") {
+        // Left arrow - collapse
         const item = flatItems[cursorIndex];
         if (item?.isDirectory && item.expanded) {
           item.expanded = false;
@@ -424,12 +482,33 @@ export async function runInteractive(
         }
       }
 
-      if (input === "\x1b[C" || input === "l") {
-        // Right arrow or l - expand
+      if (input === "\x1b[C") {
+        // Right arrow - expand
         const item = flatItems[cursorIndex];
         if (item?.isDirectory && !item.expanded) {
           item.expanded = true;
         }
+      }
+      if (input === "e") {
+        // E - expand all folders
+        setAllExpanded(tree, true);
+      }
+
+      if (input === "c") {
+        // C - collapse all folders
+        setAllExpanded(tree, false);
+        // Move cursor to a visible item (root level)
+        cursorIndex = 0;
+      }
+
+      if (input === "f") {
+        // F - jump to next folder
+        cursorIndex = findNextFolder(flatItems, cursorIndex);
+      }
+
+      if (input === "F") {
+        // Shift+F - jump to previous folder
+        cursorIndex = findPrevFolder(flatItems, cursorIndex);
       }
     }
   } finally {
