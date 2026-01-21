@@ -89,6 +89,7 @@ ${bold(yellow("INTERACTIVE CONTROLS:"))}
   ${dim("[↑/↓]")}    Navigate
   ${dim("[←]")}      Collapse folder
   ${dim("[→]")}      Expand folder
+  ${dim("[o]")}      Cycle output mode (stdout → clipboard → file)
   ${dim("[enter]")}  Confirm selection
   ${dim("[q]")}      Quit
 `;
@@ -203,11 +204,24 @@ export async function main(args: string[] = Deno.args): Promise<void> {
     if (interactive) {
       // Interactive mode (default)
       const rootPath = options.roots[0] || ".";
-      files = await runInteractive(rootPath);
+      const result = await runInteractive(rootPath);
 
-      if (files.length === 0) {
+      if (!result || result.files.length === 0) {
         console.error(yellow("No files selected."));
         Deno.exit(1);
+      }
+
+      files = result.files;
+      options.output = result.outputMode;
+
+      // If file output selected, prompt for path
+      if (options.output === "file" && !options.outputPath) {
+        const path = prompt("Output file path:");
+        if (!path) {
+          console.error(yellow("No output path provided."));
+          Deno.exit(1);
+        }
+        options.outputPath = path;
       }
     } else {
       // Non-interactive mode

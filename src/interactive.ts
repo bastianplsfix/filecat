@@ -1,7 +1,14 @@
-import { blue, bold, dim, green, inverse, yellow } from "./colors.ts";
+import { blue, bold, cyan, dim, green, inverse, yellow } from "./colors.ts";
 import { walk } from "@std/fs/walk";
 import { basename, relative, resolve } from "@std/path";
 import type { BundleFile } from "./types.ts";
+
+export type OutputMode = "stdout" | "clipboard" | "file";
+
+export interface InteractiveResult {
+  files: BundleFile[];
+  outputMode: OutputMode;
+}
 
 /**
  * Directories to always skip during filesystem walks
@@ -199,6 +206,16 @@ function getSelectedFiles(items: TreeItem[], cwd: string): BundleFile[] {
 }
 
 /**
+ * Format output mode for display
+ */
+function formatOutputMode(mode: OutputMode): string {
+  const modes: OutputMode[] = ["stdout", "clipboard", "file"];
+  return modes
+    .map((m) => (m === mode ? cyan(`[${m}]`) : dim(m)))
+    .join("  ");
+}
+
+/**
  * Render the tree view
  */
 function render(
@@ -206,6 +223,7 @@ function render(
   cursorIndex: number,
   terminalHeight: number,
   scrollOffset: number,
+  outputMode: OutputMode,
 ): string {
   const lines: string[] = [];
 
@@ -214,7 +232,9 @@ function render(
   lines.push(bold(" filecat ") + dim("- Select files to concatenate"));
   lines.push("");
   lines.push(dim(" [space] toggle  [a] toggle all  [enter] confirm  [q] quit"));
-  lines.push(dim(" [↑/↓] navigate  [←/→] collapse/expand"));
+  lines.push(dim(" [↑/↓] navigate  [←/→] collapse/expand  [o] output mode"));
+  lines.push("");
+  lines.push(" Output: " + formatOutputMode(outputMode));
   lines.push("");
 
   const headerLines = lines.length;
@@ -271,11 +291,20 @@ function clearScreen() {
 }
 
 /**
+ * Cycle to next output mode
+ */
+function nextOutputMode(current: OutputMode): OutputMode {
+  const modes: OutputMode[] = ["stdout", "clipboard", "file"];
+  const idx = modes.indexOf(current);
+  return modes[(idx + 1) % modes.length];
+}
+
+/**
  * Run interactive file selector
  */
 export async function runInteractive(
   rootPath: string = ".",
-): Promise<BundleFile[]> {
+): Promise<InteractiveResult | null> {
   const cwd = Deno.cwd();
   const absoluteRoot = resolve(cwd, rootPath);
 
@@ -289,6 +318,7 @@ export async function runInteractive(
 
   let cursorIndex = 0;
   let scrollOffset = 0;
+  let outputMode: OutputMode = "stdout";
 
   // Get terminal size
   const getTerminalSize = () => {
@@ -321,7 +351,15 @@ export async function runInteractive(
 
       // Render
       clearScreen();
-      console.log(render(flatItems, cursorIndex, terminalHeight, scrollOffset));
+      console.log(
+        render(
+          flatItems,
+          cursorIndex,
+          terminalHeight,
+          scrollOffset,
+          outputMode,
+        ),
+      );
 
       // Read input
       const bytesRead = await Deno.stdin.read(buffer);
@@ -332,12 +370,20 @@ export async function runInteractive(
       // Handle input
       if (input === "q" || input === "\x03") {
         // q or Ctrl+C - quit without selection
-        return [];
+        return null;
       }
 
       if (input === "\r" || input === "\n") {
         // Enter - confirm selection
-        return getSelectedFiles(tree, cwd);
+        return {
+          files: getSelectedFiles(tree, cwd),
+          outputMode,
+        };
+      }
+
+      if (input === "o") {
+        // O - cycle output mode
+        outputMode = nextOutputMode(outputMode);
       }
 
       if (input === " ") {
@@ -391,5 +437,5 @@ export async function runInteractive(
     clearScreen();
   }
 
-  return [];
+  return null;
 }
