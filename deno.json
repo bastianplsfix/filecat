@@ -1,0 +1,17 @@
+{
+  "name": "@filecat/cli",
+  "version": "0.0.1",
+  "exports": "./src/cli.ts",
+  "tasks": {
+    "dev": "deno run --watch main.ts",
+    "filecat": "deno run --allow-read --allow-write --allow-run src/cli.ts",
+    "compile": "deno compile --allow-read --allow-write --allow-run --output filecat src/cli.ts"
+  },
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1.0.17",
+    "@std/cli": "jsr:@std/cli@^1.0.26",
+    "@std/fmt": "jsr:@std/fmt@^1.0.9",
+    "@std/fs": "jsr:@std/fs@^1.0.22",
+    "@std/path": "jsr:@std/path@^1.1.4"
+  }
+}
