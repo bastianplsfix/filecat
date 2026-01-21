@@ -25,18 +25,24 @@ TMPDIR=$(mktemp -d)
 trap "rm -rf $TMPDIR" EXIT
 
 # Download and compute SHA256 for each platform
-platforms=("darwin-x86_64" "darwin-aarch64" "linux-x86_64")
-declare -A shas
+SHA_DARWIN_X86_64=""
+SHA_DARWIN_AARCH64=""
+SHA_LINUX_X86_64=""
 
-for platform in "${platforms[@]}"; do
+for platform in darwin-x86_64 darwin-aarch64 linux-x86_64; do
   artifact="filecat-${platform}.tar.gz"
   url="${BASE_URL}/${artifact}"
 
   echo "Downloading ${artifact}..."
   if curl -fsSL -o "${TMPDIR}/${artifact}" "$url"; then
     sha=$(shasum -a 256 "${TMPDIR}/${artifact}" | awk '{print $1}')
-    shas[$platform]=$sha
     echo "  SHA256: ${sha}"
+
+    case "$platform" in
+      darwin-x86_64)  SHA_DARWIN_X86_64="$sha" ;;
+      darwin-aarch64) SHA_DARWIN_AARCH64="$sha" ;;
+      linux-x86_64)   SHA_LINUX_X86_64="$sha" ;;
+    esac
   else
     echo "  Warning: Failed to download ${artifact}"
   fi
@@ -56,19 +62,20 @@ echo "Updating ${FORMULA_PATH}..."
 # Update version
 sed -i.bak "s/version \".*\"/version \"${FORMULA_VERSION}\"/" "$FORMULA_PATH"
 
-# Update SHA256 hashes
-if [ -n "${shas[darwin-x86_64]}" ]; then
-  sed -i.bak "s/PLACEHOLDER_SHA256_DARWIN_X86_64/${shas[darwin-x86_64]}/" "$FORMULA_PATH"
-  # Also handle existing hashes (64 char hex strings)
-  sed -i.bak -E "s/(url.*darwin-x86_64.*$)/\1/; n; s/sha256 \"[a-f0-9]{64}\"/sha256 \"${shas[darwin-x86_64]}\"/" "$FORMULA_PATH"
+# Update SHA256 hashes (handles both placeholders and existing hashes)
+if [ -n "$SHA_DARWIN_X86_64" ]; then
+  sed -i.bak "s/PLACEHOLDER_SHA256_DARWIN_X86_64/${SHA_DARWIN_X86_64}/" "$FORMULA_PATH"
+  sed -i.bak -E "/darwin-x86_64/{ n; s/sha256 \"[a-f0-9]{64}\"/sha256 \"${SHA_DARWIN_X86_64}\"/; }" "$FORMULA_PATH"
 fi
 
-if [ -n "${shas[darwin-aarch64]}" ]; then
-  sed -i.bak "s/PLACEHOLDER_SHA256_DARWIN_AARCH64/${shas[darwin-aarch64]}/" "$FORMULA_PATH"
+if [ -n "$SHA_DARWIN_AARCH64" ]; then
+  sed -i.bak "s/PLACEHOLDER_SHA256_DARWIN_AARCH64/${SHA_DARWIN_AARCH64}/" "$FORMULA_PATH"
+  sed -i.bak -E "/darwin-aarch64/{ n; s/sha256 \"[a-f0-9]{64}\"/sha256 \"${SHA_DARWIN_AARCH64}\"/; }" "$FORMULA_PATH"
 fi
 
-if [ -n "${shas[linux-x86_64]}" ]; then
-  sed -i.bak "s/PLACEHOLDER_SHA256_LINUX_X86_64/${shas[linux-x86_64]}/" "$FORMULA_PATH"
+if [ -n "$SHA_LINUX_X86_64" ]; then
+  sed -i.bak "s/PLACEHOLDER_SHA256_LINUX_X86_64/${SHA_LINUX_X86_64}/" "$FORMULA_PATH"
+  sed -i.bak -E "/linux-x86_64/{ n; s/sha256 \"[a-f0-9]{64}\"/sha256 \"${SHA_LINUX_X86_64}\"/; }" "$FORMULA_PATH"
 fi
 
 # Clean up backup files
