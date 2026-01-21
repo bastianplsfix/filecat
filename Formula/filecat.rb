@@ -1,25 +1,25 @@
 class Filecat < Formula
   desc "CLI tool that concatenates files with smart comment headers and tree reports"
   homepage "https://github.com/bastianplsfix/filecat"
-  version "0.0.2"
+  version "0.0.3"
   license "MIT"
 
   on_macos do
     on_intel do
       url "https://github.com/bastianplsfix/filecat/releases/download/v#{version}/filecat-darwin-x86_64.tar.gz"
-      sha256 "b84fa91b27215a925aedef590da08574b4256ff193b636c2a63b36c23c5ff783"
+      sha256 "0afa1d2daea2ca9446a2555dc2cc15c815c5b0cdab599827a9b81a8c8c7283a3"
     end
 
     on_arm do
       url "https://github.com/bastianplsfix/filecat/releases/download/v#{version}/filecat-darwin-aarch64.tar.gz"
-      sha256 "6f1a982a63bd7cc9d523a7bfcafa78be44245ba6c0372bf52368a6b7413a9251"
+      sha256 "49930a7734d39c48e88e6a252bd416333d3d62b6a5ca43215b50f01538e7c91e"
     end
   end
 
   on_linux do
     on_intel do
       url "https://github.com/bastianplsfix/filecat/releases/download/v#{version}/filecat-linux-x86_64.tar.gz"
-      sha256 "ff9563cb670a3a03da66e6aa5ff141696b0473a79afff8c67e8ed3639516d594"
+      sha256 "5ee50ea180306a4402118e9c5ac168af9ca00b49adffdf8ae6c3b8f5bbddb8b0"
     end
   end
 
