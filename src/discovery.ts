@@ -58,6 +58,125 @@ function getExtension(filePath: string): string {
 }
 
 /**
+ * Known binary file extensions
+ */
+const BINARY_EXTENSIONS = new Set([
+  // Images
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "bmp",
+  "ico",
+  "webp",
+  "svg",
+  "tiff",
+  "tif",
+  "psd",
+  "ai",
+  // Audio
+  "mp3",
+  "wav",
+  "flac",
+  "aac",
+  "ogg",
+  "wma",
+  "m4a",
+  // Video
+  "mp4",
+  "avi",
+  "mkv",
+  "mov",
+  "wmv",
+  "flv",
+  "webm",
+  "m4v",
+  // Archives
+  "zip",
+  "tar",
+  "gz",
+  "bz2",
+  "xz",
+  "7z",
+  "rar",
+  "jar",
+  "war",
+  // Executables/Libraries
+  "exe",
+  "dll",
+  "so",
+  "dylib",
+  "bin",
+  "o",
+  "a",
+  "lib",
+  // Documents
+  "pdf",
+  "doc",
+  "docx",
+  "xls",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "odt",
+  "ods",
+  "odp",
+  // Fonts
+  "ttf",
+  "otf",
+  "woff",
+  "woff2",
+  "eot",
+  // Database
+  "db",
+  "sqlite",
+  "sqlite3",
+  "mdb",
+  // Other binary
+  "iso",
+  "dmg",
+  "img",
+  "class",
+  "pyc",
+  "pyo",
+  "wasm",
+]);
+
+/**
+ * Check if a file is likely binary based on extension
+ */
+function isBinaryExtension(extension: string): boolean {
+  return BINARY_EXTENSIONS.has(extension.toLowerCase());
+}
+
+/**
+ * Check if a file is binary by reading first bytes and checking for null bytes
+ */
+async function isBinaryFile(filePath: string): Promise<boolean> {
+  try {
+    const file = await Deno.open(filePath, { read: true });
+    const buffer = new Uint8Array(8192);
+    const bytesRead = await file.read(buffer);
+    file.close();
+
+    if (bytesRead === null || bytesRead === 0) {
+      return false;
+    }
+
+    // Check for null bytes in the sample (common indicator of binary)
+    for (let i = 0; i < bytesRead; i++) {
+      if (buffer[i] === 0) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Check if a path matches any of the given glob patterns
  */
 function matchesGlobs(relativePath: string, patterns: string[]): boolean {
@@ -207,18 +326,29 @@ async function discoverGitChanged(
 }
 
 /**
- * Filter files based on options
+ * Filter files based on options (synchronous checks only)
  */
-function filterFiles(
+function filterFilesSync(
   files: string[],
   options: BundleOptions,
   cwd: string,
 ): BundleFile[] {
   const result: BundleFile[] = [];
 
+  // Compile regex pattern if provided
+  let matchRegex: RegExp | null = null;
+  if (options.match) {
+    try {
+      matchRegex = new RegExp(options.match);
+    } catch {
+      throw new Error(`Invalid regex pattern: ${options.match}`);
+    }
+  }
+
   for (const absolutePath of files) {
     const relativePath = relative(cwd, absolutePath);
     const extension = getExtension(absolutePath);
+    const filename = basename(absolutePath);
 
     // Skip if in excluded directories
     const pathParts = relativePath.split(/[\\/]/);
@@ -247,7 +377,18 @@ function filterFiles(
       }
     }
 
-    // Check if file exists and is readable
+    // Regex match filter (matches against filename or full relative path)
+    if (matchRegex) {
+      if (!matchRegex.test(filename) && !matchRegex.test(relativePath)) {
+        continue;
+      }
+    }
+
+    // Quick binary check by extension (skip known binary extensions)
+    if (options.skipBinary !== false && isBinaryExtension(extension)) {
+      continue;
+    }
+
     result.push({
       absolutePath,
       relativePath,
@@ -256,6 +397,71 @@ function filterFiles(
   }
 
   return result;
+}
+
+/**
+ * Filter files based on options (async for binary content check)
+ */
+async function filterFiles(
+  files: string[],
+  options: BundleOptions,
+  cwd: string,
+): Promise<BundleFile[]> {
+  // First pass: synchronous filters
+  const candidates = filterFilesSync(files, options, cwd);
+
+  // Second pass: async binary content check if enabled
+  if (options.skipBinary !== false) {
+    const result: BundleFile[] = [];
+    for (const file of candidates) {
+      // Skip content check for known text extensions
+      const knownTextExtensions = new Set([
+        "ts",
+        "tsx",
+        "js",
+        "jsx",
+        "json",
+        "md",
+        "txt",
+        "html",
+        "css",
+        "scss",
+        "yaml",
+        "yml",
+        "toml",
+        "xml",
+        "sh",
+        "bash",
+        "zsh",
+        "py",
+        "rb",
+        "go",
+        "rs",
+        "java",
+        "c",
+        "cpp",
+        "h",
+        "hpp",
+        "cs",
+        "swift",
+        "kt",
+        "scala",
+      ]);
+
+      if (knownTextExtensions.has(file.extension.toLowerCase())) {
+        result.push(file);
+        continue;
+      }
+
+      // Check file content for binary
+      if (!(await isBinaryFile(file.absolutePath))) {
+        result.push(file);
+      }
+    }
+    return result;
+  }
+
+  return candidates;
 }
 
 /**
@@ -281,10 +487,13 @@ export async function discoverFiles(
   }
 
   // Apply filters
-  const filteredFiles = filterFiles(files, options, cwd);
+  const filteredFiles = await filterFiles(files, options, cwd);
 
   // Sort for deterministic output
   filteredFiles.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
 
   return filteredFiles;
 }
+
+// Export for use in interactive mode
+export { isBinaryExtension, isBinaryFile };

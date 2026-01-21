@@ -1,7 +1,17 @@
-import { blue, bold, cyan, dim, green, inverse, yellow } from "./colors.ts";
+import {
+  blue,
+  bold,
+  cyan,
+  dim,
+  green,
+  inverse,
+  red,
+  yellow,
+} from "./colors.ts";
 import { walk } from "@std/fs/walk";
-import { basename, relative, resolve } from "@std/path";
+import { basename, extname, relative, resolve } from "@std/path";
 import type { BundleFile } from "./types.ts";
+import { isBinaryExtension } from "./discovery.ts";
 
 export type OutputMode = "stdout" | "clipboard" | "file";
 
@@ -46,6 +56,7 @@ interface TreeItem {
   relativePath: string;
   name: string;
   isDirectory: boolean;
+  isBinary: boolean;
   depth: number;
   selected: boolean;
   expanded: boolean;
@@ -156,11 +167,16 @@ async function buildTree(
     const depth = relativePath.split(/[\\/]/).length - 1;
     const name = basename(entry.path);
 
+    // Check if file is binary based on extension
+    const ext = extname(entry.path).slice(1).toLowerCase();
+    const isBinary = !entry.isDirectory && isBinaryExtension(ext);
+
     const item: TreeItem = {
       path: entry.path,
       relativePath,
       name,
       isDirectory: entry.isDirectory,
+      isBinary,
       depth,
       selected: false, // Nothing selected by default
       expanded: false, // All folders collapsed by default
@@ -348,14 +364,43 @@ function formatOutputMode(mode: OutputMode): string {
 }
 
 /**
- * Filter tree items based on search query
+ * Filter tree items based on search query (supports plain text or /regex/)
  */
-function filterTree(items: TreeItem[], query: string): TreeItem[] {
-  if (!query) return items;
+function filterTree(
+  items: TreeItem[],
+  query: string,
+  hideBinary: boolean,
+): TreeItem[] {
+  if (!query && !hideBinary) return items;
 
-  const lowerQuery = query.toLowerCase();
+  // Check if query is a regex (starts and ends with /)
+  let matchRegex: RegExp | null = null;
+  let isRegexMode = false;
+  let lowerQuery = "";
+
+  if (query) {
+    if (query.startsWith("/") && query.length > 1) {
+      // Regex mode - extract pattern (handle optional closing /)
+      const pattern = query.endsWith("/") && query.length > 2
+        ? query.slice(1, -1)
+        : query.slice(1);
+      try {
+        matchRegex = new RegExp(pattern, "i");
+        isRegexMode = true;
+      } catch {
+        // Invalid regex, fall back to literal search
+        lowerQuery = query.toLowerCase();
+      }
+    } else {
+      lowerQuery = query.toLowerCase();
+    }
+  }
 
   function matchesQuery(item: TreeItem): boolean {
+    if (!query) return true;
+    if (matchRegex) {
+      return matchRegex.test(item.name) || matchRegex.test(item.relativePath);
+    }
     return item.name.toLowerCase().includes(lowerQuery) ||
       item.relativePath.toLowerCase().includes(lowerQuery);
   }
@@ -364,6 +409,11 @@ function filterTree(items: TreeItem[], query: string): TreeItem[] {
     const result: TreeItem[] = [];
 
     for (const item of items) {
+      // Skip binary files if hideBinary is enabled
+      if (hideBinary && item.isBinary && !item.isDirectory) {
+        continue;
+      }
+
       if (item.isDirectory && item.children) {
         const filteredChildren = filterItems(item.children);
         if (filteredChildren.length > 0 || matchesQuery(item)) {
@@ -397,6 +447,7 @@ function render(
   outputMode: OutputMode,
   showHelp: boolean,
   showIgnored: boolean,
+  hideBinary: boolean,
   searchMode: boolean,
   searchQuery: string,
 ): string {
@@ -409,29 +460,37 @@ function render(
 
   // Status bar
   const ignoredIndicator = showIgnored ? green("on") : dim("off");
+  const binaryIndicator = hideBinary ? dim("off") : green("on");
   const helpIndicator = showHelp ? green("on") : dim("off");
 
   lines.push(
     " " + dim("o") + " " + formatOutputMode(outputMode) +
       "  " + dim("i") + " ignored " + ignoredIndicator +
+      "  " + dim("b") + " binary " + binaryIndicator +
       "  " + dim("?") + " help " + helpIndicator,
   );
 
   // Search bar
+  const isRegexQuery = searchQuery.startsWith("/");
   if (searchMode) {
     lines.push("");
-    lines.push(" " + inverse(" / ") + " " + searchQuery + cyan("_"));
+    const modeHint = isRegexQuery ? dim(" regex") : "";
+    lines.push(" " + inverse(" / ") + " " + searchQuery + cyan("_") + modeHint);
   } else if (searchQuery) {
     lines.push("");
+    const modeLabel = isRegexQuery ? yellow("regex") : dim("filter");
     lines.push(
-      " " + dim("/") + " " + cyan(searchQuery) + "  " + dim("esc clear"),
+      " " + dim("/") + " " + cyan(searchQuery) + "  " + modeLabel + "  " +
+        dim("esc clear"),
     );
   }
 
   if (showHelp) {
     lines.push("");
     lines.push(
-      dim(" ─────────────────────────────────────────────────────────────"),
+      dim(
+        " ───────────────────────────────────────────────────────────────────",
+      ),
     );
     lines.push(
       dim("   space") + " toggle selection    " +
@@ -441,16 +500,18 @@ function render(
     );
     lines.push(
       dim("   ↑ ↓") + "   navigate          " +
-        dim("← →") + " collapse/expand",
-    );
-    lines.push(
-      dim("   e") + "     expand all        " +
-        dim("c") + " collapse all  " +
-        dim("f F") + " jump to folder",
+        dim("← →") + " collapse/expand     " +
+        dim("e c") + " expand/collapse all",
     );
     lines.push(
       dim("   /") + "     search            " +
-        dim("esc") + " clear search",
+        dim("//") + "  regex mode         " +
+        dim("esc") + " clear",
+    );
+    lines.push(
+      dim("   i") + "     toggle ignored    " +
+        dim("b") + "   toggle binary     " +
+        dim("f F") + " jump to folder",
     );
   }
 
@@ -480,6 +541,9 @@ function render(
     if (item.isDirectory) {
       icon = item.expanded ? "▼ " : "▶ ";
       name = blue(item.name + "/");
+    } else if (item.isBinary) {
+      icon = "  ";
+      name = dim(item.name) + dim(" [bin]");
     } else {
       icon = "  ";
       name = item.name;
@@ -532,6 +596,7 @@ export async function runInteractive(
   let outputMode: OutputMode = "clipboard"; // Default to clipboard
   let showHelp = false;
   let showIgnored = false;
+  let hideBinary = true; // Hide binary files by default
   let searchMode = false;
   let searchQuery = "";
 
@@ -561,8 +626,8 @@ export async function runInteractive(
 
   try {
     while (true) {
-      // Apply search filter
-      const filteredTree = searchQuery ? filterTree(tree, searchQuery) : tree;
+      // Apply search filter and binary filter
+      const filteredTree = filterTree(tree, searchQuery, hideBinary);
       const flatItems = flattenTree(filteredTree);
       const terminalHeight = getTerminalSize();
 
@@ -590,6 +655,7 @@ export async function runInteractive(
           outputMode,
           showHelp,
           showIgnored,
+          hideBinary,
           searchMode,
           searchQuery,
         ),
@@ -667,6 +733,13 @@ export async function runInteractive(
         // i - toggle showing ignored files
         showIgnored = !showIgnored;
         tree = await buildTree(absoluteRoot, cwd, showIgnored);
+        cursorIndex = 0;
+        scrollOffset = 0;
+      }
+
+      if (input === "b") {
+        // b - toggle showing binary files
+        hideBinary = !hideBinary;
         cursorIndex = 0;
         scrollOffset = 0;
       }

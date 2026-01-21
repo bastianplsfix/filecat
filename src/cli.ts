@@ -33,6 +33,11 @@ ${bold(yellow("OPTIONS:"))}
   ${
     green("--exclude")
   } <glob>       Exclude files matching glob (can be repeated)
+  ${
+    green("--match")
+  } <regex>        Filter by regex pattern (e.g., "^test_.*" or "\\.spec\\.")
+
+  ${green("--include-binary")}       Include binary files (excluded by default)
 
   ${green("--git")}                  Use git-tracked files only
   ${green("--staged")}               Use staged files only (git diff --cached)
@@ -70,6 +75,10 @@ ${bold(yellow("EXAMPLES:"))}
 
   ${dim("# Exclude test files")}
   filecat src --exclude "**/*.test.*" -n
+
+  ${dim("# Filter by regex (test files)")}
+  filecat src --match "^test_.*" -n
+  filecat src --match "\\.spec\\." -n
 
   ${dim("# Concatenate staged changes")}
   filecat --staged
@@ -113,7 +122,16 @@ interface ParsedOptions {
  */
 function parseOptions(args: string[]): ParsedOptions | null {
   const parsed = parseArgs(args, {
-    string: ["ext", "include", "exclude", "out", "output", "o", "since"],
+    string: [
+      "ext",
+      "include",
+      "exclude",
+      "out",
+      "output",
+      "o",
+      "since",
+      "match",
+    ],
     boolean: [
       "help",
       "h",
@@ -126,6 +144,7 @@ function parseOptions(args: string[]): ParsedOptions | null {
       "no-interactive",
       "n",
       "no-color",
+      "include-binary",
     ],
     collect: ["include", "exclude"],
     default: {
@@ -179,6 +198,8 @@ function parseOptions(args: string[]): ParsedOptions | null {
       extensions,
       include: parsed.include as string[],
       exclude: parsed.exclude as string[],
+      match: parsed.match,
+      skipBinary: !parsed["include-binary"],
       gitTracked: parsed.git,
       staged: parsed.staged,
       changed: parsed.changed,

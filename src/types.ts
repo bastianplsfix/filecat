@@ -14,6 +14,12 @@ export interface BundleOptions {
   /** Glob patterns to exclude */
   exclude?: string[];
 
+  /** Regex pattern to match filenames */
+  match?: string;
+
+  /** Skip binary files */
+  skipBinary?: boolean;
+
   /** Use git-tracked files only */
   gitTracked?: boolean;
 
