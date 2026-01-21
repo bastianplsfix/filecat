@@ -4,17 +4,25 @@ import type { BundleOptions } from "./types.ts";
 import { discoverFiles } from "./discovery.ts";
 import { bundleFiles, outputBundle } from "./bundler.ts";
 import { generateTreeReport } from "./tree.ts";
+import { runInteractive } from "./interactive.ts";
 
 const HELP_TEXT = `
 ${bold("filecat")} - Concatenate files with smart comment headers
 
 ${bold(yellow("USAGE:"))}
-  filecat [paths...] [options]
+  filecat [path]                 ${dim("Interactive mode (default)")}
+  filecat [paths...] ${green("-n")}          ${dim("Non-interactive mode")}
 
 ${bold(yellow("ARGUMENTS:"))}
-  ${cyan("paths")}          Root paths to bundle (default: current directory)
+  ${
+  cyan("paths")
+}          Root paths to concatenate (default: current directory)
 
 ${bold(yellow("OPTIONS:"))}
+  ${green("-n")}, ${
+  green("--no-interactive")
+}   Skip interactive mode, concatenate all files directly
+
   ${
   green("--ext")
 } <exts>           Filter by extensions (comma-separated, e.g., ts,tsx,md)
@@ -46,38 +54,63 @@ ${bold(yellow("OPTIONS:"))}
   ${green("--help")}, ${green("-h")}             Show this help message
 
 ${bold(yellow("EXAMPLES:"))}
-  ${dim("# Concatenate everything under src/")}
+  ${dim("# Interactive file selection (default)")}
+  filecat
   filecat src
 
-  ${dim("# Concatenate only TypeScript files")}
-  filecat src --ext ts,tsx
+  ${dim("# Non-interactive: concatenate all files")}
+  filecat src -n
+  filecat src --ext ts,tsx -n
 
   ${dim("# Concatenate by glob patterns")}
-  filecat --include "src/**" --include "docs/**"
+  filecat --include "src/**" --include "docs/**" -n
 
   ${dim("# Exclude test files")}
-  filecat src --exclude "**/*.test.*" --exclude "**/__tests__/**"
+  filecat src --exclude "**/*.test.*" -n
 
   ${dim("# Concatenate staged changes")}
   filecat --staged
-
-  ${dim("# Concatenate changes since main branch")}
-  filecat --changed --since main
 
   ${dim("# Output to file")}
   filecat src --out file --output output.txt
 
   ${dim("# Copy to clipboard (macOS)")}
   filecat src --out clipboard
+
+${bold(yellow("INTERACTIVE CONTROLS:"))}
+  ${dim("[space]")}  Toggle file/folder selection
+  ${dim("[a]")}      Toggle all
+  ${dim("[↑/↓]")}    Navigate
+  ${dim("[←]")}      Collapse folder
+  ${dim("[→]")}      Expand folder
+  ${dim("[enter]")}  Confirm selection
+  ${dim("[q]")}      Quit
 `;
+
+interface ParsedOptions {
+  options: BundleOptions;
+  interactive: boolean;
+  showTree: boolean;
+}
 
 /**
  * Parse CLI arguments into BundleOptions
  */
-function parseOptions(args: string[]): BundleOptions | null {
+function parseOptions(args: string[]): ParsedOptions | null {
   const parsed = parseArgs(args, {
     string: ["ext", "include", "exclude", "out", "output", "o", "since"],
-    boolean: ["help", "h", "git", "staged", "changed", "no-tree", "quiet", "q"],
+    boolean: [
+      "help",
+      "h",
+      "git",
+      "staged",
+      "changed",
+      "no-tree",
+      "quiet",
+      "q",
+      "no-interactive",
+      "n",
+    ],
     collect: ["include", "exclude"],
     default: {
       out: "stdout",
@@ -111,17 +144,29 @@ function parseOptions(args: string[]): BundleOptions | null {
     Deno.exit(1);
   }
 
+  // Interactive is default, unless -n/--no-interactive is passed
+  // Also disable interactive for git modes (staged, changed) as they have specific file sets
+  const noInteractive = parsed["no-interactive"] || parsed.n;
+  const gitMode = parsed.git || parsed.staged || parsed.changed;
+  const interactive = !noInteractive && !gitMode;
+
+  const showTree = !parsed["no-tree"] && !parsed.quiet && !parsed.q;
+
   return {
-    roots: roots.map(String),
-    extensions,
-    include: parsed.include as string[],
-    exclude: parsed.exclude as string[],
-    gitTracked: parsed.git,
-    staged: parsed.staged,
-    changed: parsed.changed,
-    since: parsed.since,
-    output,
-    outputPath,
+    options: {
+      roots: roots.map(String),
+      extensions,
+      include: parsed.include as string[],
+      exclude: parsed.exclude as string[],
+      gitTracked: parsed.git,
+      staged: parsed.staged,
+      changed: parsed.changed,
+      since: parsed.since,
+      output,
+      outputPath,
+    },
+    interactive,
+    showTree,
   };
 }
 
@@ -129,23 +174,35 @@ function parseOptions(args: string[]): BundleOptions | null {
  * Main CLI entry point
  */
 export async function main(args: string[] = Deno.args): Promise<void> {
-  const options = parseOptions(args);
-  if (!options) {
+  const parsed = parseOptions(args);
+  if (!parsed) {
     return; // Help was shown
   }
 
-  const parsed = parseArgs(args, {
-    boolean: ["no-tree", "quiet", "q"],
-  });
-  const showTree = !parsed["no-tree"] && !parsed.quiet && !parsed.q;
+  const { options, interactive, showTree } = parsed;
 
   try {
-    // Discover files
-    const files = await discoverFiles(options);
+    let files;
 
-    if (files.length === 0) {
-      console.error(yellow("No files found matching the specified criteria."));
-      Deno.exit(1);
+    if (interactive) {
+      // Interactive mode (default)
+      const rootPath = options.roots[0] || ".";
+      files = await runInteractive(rootPath);
+
+      if (files.length === 0) {
+        console.error(yellow("No files selected."));
+        Deno.exit(1);
+      }
+    } else {
+      // Non-interactive mode
+      files = await discoverFiles(options);
+
+      if (files.length === 0) {
+        console.error(
+          yellow("No files found matching the specified criteria."),
+        );
+        Deno.exit(1);
+      }
     }
 
     // Bundle files

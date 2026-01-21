@@ -21,7 +21,8 @@ deno task filecat [args...]
 ## Usage
 
 ```
-filecat [paths...] [options]
+filecat [path]                  # Interactive mode (default)
+filecat [paths...] -n           # Non-interactive mode
 ```
 
 ### Arguments
@@ -29,6 +30,12 @@ filecat [paths...] [options]
 - `paths` - Root paths to concatenate (default: current directory)
 
 ### Options
+
+**Mode:**
+
+| Option | Description |
+|--------|-------------|
+| `-n`, `--no-interactive` | Skip interactive mode, concatenate all files directly |
 
 **Filtering:**
 
@@ -38,7 +45,7 @@ filecat [paths...] [options]
 | `--include <glob>` | Include only files matching glob (can be repeated) |
 | `--exclude <glob>` | Exclude files matching glob (can be repeated) |
 
-**Git modes:**
+**Git modes** (automatically non-interactive):
 
 | Option | Description |
 |--------|-------------|
@@ -57,27 +64,49 @@ filecat [paths...] [options]
 
 ## Examples
 
-### Concatenate a directory
+### Interactive mode (default)
+
+```bash
+# Select files interactively from current directory
+filecat
+
+# Select files interactively from src/
+filecat src
+```
+
+**Interactive controls:**
+
+| Key | Action |
+|-----|--------|
+| `space` | Toggle file/folder selection |
+| `a` | Toggle all |
+| `↑` / `↓` | Navigate |
+| `←` | Collapse folder |
+| `→` | Expand folder |
+| `enter` | Confirm selection |
+| `q` | Quit |
+
+### Non-interactive mode
 
 ```bash
 # Concatenate everything under src/
-filecat src
+filecat src -n
 
 # Concatenate only TypeScript files
-filecat src --ext ts,tsx
+filecat src --ext ts,tsx -n
 
 # Concatenate multiple directories
-filecat src lib
+filecat src lib -n
 ```
 
 ### Use glob patterns
 
 ```bash
 # Include specific patterns
-filecat --include "src/**" --include "docs/**"
+filecat --include "src/**" --include "docs/**" -n
 
 # Exclude test files
-filecat src --exclude "**/*.test.*" --exclude "**/__tests__/**"
+filecat src --exclude "**/*.test.*" --exclude "**/__tests__/**" -n
 ```
 
 ### Git-aware selection
@@ -98,13 +127,12 @@ filecat --changed --since main
 ```bash
 # Write to file
 filecat src --out file --output output.txt
-filecat src --out file -o output.txt
 
 # Copy to clipboard (macOS)
 filecat src --out clipboard
 
 # Suppress tree report (useful for piping)
-filecat src -q | pbcopy
+filecat src -n -q | pbcopy
 ```
 
 ## Output format
