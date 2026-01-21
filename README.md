@@ -4,17 +4,29 @@ A CLI tool that concatenates files into a single output with smart comment heade
 
 ## Installation
 
-### Compile to binary
+### Homebrew (macOS and Linux)
 
 ```bash
-deno task compile
+brew install bastianplsfix/tap/filecat
 ```
 
-This creates a `filecat` executable in the project root.
+### Download binary
 
-### Run directly
+Download the latest binary for your platform from the [releases page](https://github.com/bastianplsfix/filecat/releases).
+
+### Build from source
+
+Requires [Deno](https://deno.land/) v2.x.
 
 ```bash
+# Clone the repository
+git clone https://github.com/bastianplsfix/filecat.git
+cd filecat
+
+# Compile to binary
+deno task compile
+
+# Or run directly without compiling
 deno task filecat [args...]
 ```
 
