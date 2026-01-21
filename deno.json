@@ -5,7 +5,8 @@
   "tasks": {
     "dev": "deno run --watch main.ts",
     "filecat": "deno run --allow-read --allow-write --allow-run src/cli.ts",
-    "compile": "deno compile --allow-read --allow-write --allow-run --output filecat src/cli.ts"
+    "compile": "deno compile --allow-read --allow-write --allow-run --output filecat src/cli.ts",
+    "test": "deno test --allow-read --allow-write --allow-run test/"
   },
   "imports": {
     "@std/assert": "jsr:@std/assert@^1.0.17",
