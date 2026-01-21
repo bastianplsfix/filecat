@@ -1,12 +1,13 @@
 import { parseArgs } from "@std/cli/parse-args";
-import { bold, cyan, dim, green, red, yellow } from "@std/fmt/colors";
+import { blue, bold, dim, green, setNoColor, yellow } from "./colors.ts";
 import type { BundleOptions } from "./types.ts";
 import { discoverFiles } from "./discovery.ts";
 import { bundleFiles, outputBundle } from "./bundler.ts";
 import { generateTreeReport } from "./tree.ts";
 import { runInteractive } from "./interactive.ts";
 
-const HELP_TEXT = `
+function getHelpText() {
+  return `
 ${bold("filecat")} - Concatenate files with smart comment headers
 
 ${bold(yellow("USAGE:"))}
@@ -15,41 +16,43 @@ ${bold(yellow("USAGE:"))}
 
 ${bold(yellow("ARGUMENTS:"))}
   ${
-  cyan("paths")
-}          Root paths to concatenate (default: current directory)
+    cyan("paths")
+  }          Root paths to concatenate (default: current directory)
 
 ${bold(yellow("OPTIONS:"))}
   ${green("-n")}, ${
-  green("--no-interactive")
-}   Skip interactive mode, concatenate all files directly
+    green("--no-interactive")
+  }   Skip interactive mode, concatenate all files directly
 
   ${
-  green("--ext")
-} <exts>           Filter by extensions (comma-separated, e.g., ts,tsx,md)
+    green("--ext")
+  } <exts>           Filter by extensions (comma-separated, e.g., ts,tsx,md)
   ${
-  green("--include")
-} <glob>       Include only files matching glob (can be repeated)
+    green("--include")
+  } <glob>       Include only files matching glob (can be repeated)
   ${
-  green("--exclude")
-} <glob>       Exclude files matching glob (can be repeated)
+    green("--exclude")
+  } <glob>       Exclude files matching glob (can be repeated)
 
   ${green("--git")}                  Use git-tracked files only
   ${green("--staged")}               Use staged files only (git diff --cached)
   ${green("--changed")}              Use changed files only (git diff)
   ${
-  green("--since")
-} <ref>          Base ref for --changed comparison (e.g., main)
+    green("--since")
+  } <ref>          Base ref for --changed comparison (e.g., main)
 
   ${
-  green("--out")
-} <target>         Output target: stdout (default), file, clipboard
+    green("--out")
+  } <target>         Output target: stdout (default), file, clipboard
   ${green("--output")} <path>        Output file path (required when --out file)
   ${green("-o")} <path>              Alias for --output
 
   ${green("--no-tree")}              Don't print the tree report
   ${green("--quiet")}, ${
-  green("-q")
-}            Suppress tree report (alias for --no-tree)
+    green("-q")
+  }            Suppress tree report (alias for --no-tree)
+
+  ${green("--no-color")}             Disable all colors
 
   ${green("--help")}, ${green("-h")}             Show this help message
 
@@ -77,6 +80,9 @@ ${bold(yellow("EXAMPLES:"))}
   ${dim("# Copy to clipboard (macOS)")}
   filecat src --out clipboard
 
+  ${dim("# Disable colors")}
+  filecat src --no-color
+
 ${bold(yellow("INTERACTIVE CONTROLS:"))}
   ${dim("[space]")}  Toggle file/folder selection
   ${dim("[a]")}      Toggle all
@@ -86,6 +92,10 @@ ${bold(yellow("INTERACTIVE CONTROLS:"))}
   ${dim("[enter]")}  Confirm selection
   ${dim("[q]")}      Quit
 `;
+}
+
+// Need to import cyan for help text
+import { cyan } from "./colors.ts";
 
 interface ParsedOptions {
   options: BundleOptions;
@@ -110,6 +120,7 @@ function parseOptions(args: string[]): ParsedOptions | null {
       "q",
       "no-interactive",
       "n",
+      "no-color",
     ],
     collect: ["include", "exclude"],
     default: {
@@ -117,8 +128,13 @@ function parseOptions(args: string[]): ParsedOptions | null {
     },
   });
 
+  // Handle no-color first (before showing help)
+  if (parsed["no-color"]) {
+    setNoColor(true);
+  }
+
   if (parsed.help || parsed.h) {
-    console.log(HELP_TEXT);
+    console.log(getHelpText());
     return null;
   }
 
@@ -139,7 +155,7 @@ function parseOptions(args: string[]): ParsedOptions | null {
 
   if (output === "file" && !outputPath) {
     console.error(
-      red("Error:") + " --output path required when --out is 'file'",
+      yellow("Error:") + " --output path required when --out is 'file'",
     );
     Deno.exit(1);
   }
@@ -218,7 +234,7 @@ export async function main(args: string[] = Deno.args): Promise<void> {
     }
   } catch (error) {
     console.error(
-      red("Error:") +
+      yellow("Error:") +
         ` ${error instanceof Error ? error.message : String(error)}`,
     );
     Deno.exit(1);

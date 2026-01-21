@@ -1,4 +1,4 @@
-import { blue, bold, dim, green, yellow } from "@std/fmt/colors";
+import { blue, bold, dim, green, yellow } from "./colors.ts";
 import type { BundleFile } from "./types.ts";
 
 /**

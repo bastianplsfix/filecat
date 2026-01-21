@@ -1,6 +1,6 @@
-import { blue, bold, dim, green, inverse, yellow } from "@std/fmt/colors";
+import { blue, bold, dim, green, inverse, yellow } from "./colors.ts";
 import { walk } from "@std/fs/walk";
-import { basename, join, relative, resolve } from "@std/path";
+import { basename, relative, resolve } from "@std/path";
 import type { BundleFile } from "./types.ts";
 
 /**
