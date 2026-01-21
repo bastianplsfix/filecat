@@ -343,8 +343,8 @@ function getSelectedFiles(items: TreeItem[], cwd: string): BundleFile[] {
 function formatOutputMode(mode: OutputMode): string {
   const modes: OutputMode[] = ["stdout", "clipboard", "file"];
   return modes
-    .map((m) => (m === mode ? cyan(`[${m}]`) : dim(m)))
-    .join("  ");
+    .map((m) => (m === mode ? inverse(` ${m} `) : dim(m)))
+    .join(" ");
 }
 
 /**
@@ -407,41 +407,50 @@ function render(
   lines.push(bold(" filecat ") + dim("- Select files to concatenate"));
   lines.push("");
 
-  if (showHelp) {
-    lines.push(
-      dim(
-        " [space] toggle  [a] toggle all  [o] output  [i] ignored  [enter] confirm  [q] quit",
-      ),
-    );
-    lines.push(
-      dim(
-        " [↑/↓] navigate  [←/→] collapse/expand  [e] expand all  [c] collapse all  [f/F] jump folder",
-      ),
-    );
-    lines.push(
-      dim(
-        " [/] search  [esc] clear search",
-      ),
-    );
-    lines.push("");
-  }
+  // Status bar
+  const ignoredIndicator = showIgnored ? green("on") : dim("off");
+  const helpIndicator = showHelp ? green("on") : dim("off");
 
-  const ignoredStatus = showIgnored
-    ? dim("showing ignored")
-    : dim("hiding ignored");
   lines.push(
-    " Output: " + formatOutputMode(outputMode) + "  " + ignoredStatus +
-      dim("  [?] help"),
+    " " + dim("o") + " " + formatOutputMode(outputMode) +
+      "  " + dim("i") + " ignored " + ignoredIndicator +
+      "  " + dim("?") + " help " + helpIndicator,
   );
 
   // Search bar
   if (searchMode) {
     lines.push("");
-    lines.push(inverse(" / ") + " " + searchQuery + inverse(" "));
+    lines.push(" " + inverse(" / ") + " " + searchQuery + cyan("_"));
   } else if (searchQuery) {
     lines.push("");
     lines.push(
-      dim(" Filter: ") + cyan(searchQuery) + dim("  [esc] clear  [/] edit"),
+      " " + dim("/") + " " + cyan(searchQuery) + "  " + dim("esc clear"),
+    );
+  }
+
+  if (showHelp) {
+    lines.push("");
+    lines.push(
+      dim(" ─────────────────────────────────────────────────────────────"),
+    );
+    lines.push(
+      dim("   space") + " toggle selection    " +
+        dim("a") + " select all    " +
+        dim("enter") + " confirm    " +
+        dim("q") + " quit",
+    );
+    lines.push(
+      dim("   ↑ ↓") + "   navigate          " +
+        dim("← →") + " collapse/expand",
+    );
+    lines.push(
+      dim("   e") + "     expand all        " +
+        dim("c") + " collapse all  " +
+        dim("f F") + " jump to folder",
+    );
+    lines.push(
+      dim("   /") + "     search            " +
+        dim("esc") + " clear search",
     );
   }
 
