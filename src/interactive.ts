@@ -54,11 +54,66 @@ interface TreeItem {
 }
 
 /**
+ * Get list of git-tracked files
+ */
+async function getGitTrackedFiles(cwd: string): Promise<Set<string> | null> {
+  try {
+    const command = new Deno.Command("git", {
+      args: ["ls-files", "--cached", "--others", "--exclude-standard"],
+      cwd,
+      stdout: "piped",
+      stderr: "piped",
+    });
+    const { code, stdout } = await command.output();
+    if (code !== 0) return null;
+
+    const output = new TextDecoder().decode(stdout);
+    const files = new Set<string>();
+    for (const line of output.split("\n")) {
+      if (line.trim()) {
+        files.add(resolve(cwd, line.trim()));
+      }
+    }
+    return files;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if a path or any of its children are in the tracked set
+ */
+function isPathOrChildTracked(
+  path: string,
+  trackedFiles: Set<string>,
+  isDirectory: boolean,
+): boolean {
+  if (!isDirectory) {
+    return trackedFiles.has(path);
+  }
+  // For directories, check if any tracked file starts with this path
+  const dirPrefix = path + "/";
+  for (const file of trackedFiles) {
+    if (file.startsWith(dirPrefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Build a tree structure from a directory
  */
-async function buildTree(rootPath: string, cwd: string): Promise<TreeItem[]> {
+async function buildTree(
+  rootPath: string,
+  cwd: string,
+  showIgnored: boolean,
+): Promise<TreeItem[]> {
   const items: TreeItem[] = [];
   const dirMap = new Map<string, TreeItem>();
+
+  // Get git-tracked files if we need to filter
+  const trackedFiles = showIgnored ? null : await getGitTrackedFiles(cwd);
 
   // First pass: collect all files and directories
   const entries: { path: string; isDirectory: boolean; isFile: boolean }[] = [];
@@ -72,6 +127,14 @@ async function buildTree(rootPath: string, cwd: string): Promise<TreeItem[]> {
         skip: [...SKIP_DIRECTORIES].map((dir) => new RegExp(`[\\\\/]${dir}$`)),
       })
     ) {
+      // Filter out ignored files if trackedFiles is available
+      if (
+        trackedFiles &&
+        !isPathOrChildTracked(entry.path, trackedFiles, entry.isDirectory)
+      ) {
+        continue;
+      }
+
       entries.push({
         path: entry.path,
         isDirectory: entry.isDirectory,
@@ -294,6 +357,7 @@ function render(
   scrollOffset: number,
   outputMode: OutputMode,
   showHelp: boolean,
+  showIgnored: boolean,
 ): string {
   const lines: string[] = [];
 
@@ -305,7 +369,7 @@ function render(
   if (showHelp) {
     lines.push(
       dim(
-        " [space] toggle  [a] toggle all  [o] output  [enter] confirm  [q] quit",
+        " [space] toggle  [a] toggle all  [o] output  [i] ignored  [enter] confirm  [q] quit",
       ),
     );
     lines.push(
@@ -316,7 +380,13 @@ function render(
     lines.push("");
   }
 
-  lines.push(" Output: " + formatOutputMode(outputMode) + dim("    [?] help"));
+  const ignoredStatus = showIgnored
+    ? dim("showing ignored")
+    : dim("hiding ignored");
+  lines.push(
+    " Output: " + formatOutputMode(outputMode) + "  " + ignoredStatus +
+      dim("  [?] help"),
+  );
   lines.push("");
 
   const headerLines = lines.length;
@@ -390,18 +460,19 @@ export async function runInteractive(
   const cwd = Deno.cwd();
   const absoluteRoot = resolve(cwd, rootPath);
 
+  let cursorIndex = 0;
+  let scrollOffset = 0;
+  let outputMode: OutputMode = "clipboard"; // Default to clipboard
+  let showHelp = false;
+  let showIgnored = false;
+
   // Build initial tree
-  const tree = await buildTree(absoluteRoot, cwd);
+  let tree = await buildTree(absoluteRoot, cwd, showIgnored);
 
   if (tree.length === 0) {
     console.error(yellow("No files found in the specified directory."));
     Deno.exit(1);
   }
-
-  let cursorIndex = 0;
-  let scrollOffset = 0;
-  let outputMode: OutputMode = "clipboard"; // Default to clipboard
-  let showHelp = false;
 
   // Get terminal size
   const getTerminalSize = () => {
@@ -442,6 +513,7 @@ export async function runInteractive(
           scrollOffset,
           outputMode,
           showHelp,
+          showIgnored,
         ),
       );
 
@@ -473,6 +545,14 @@ export async function runInteractive(
       if (input === "?") {
         // ? - toggle help
         showHelp = !showHelp;
+      }
+
+      if (input === "i") {
+        // i - toggle showing ignored files
+        showIgnored = !showIgnored;
+        tree = await buildTree(absoluteRoot, cwd, showIgnored);
+        cursorIndex = 0;
+        scrollOffset = 0;
       }
 
       if (input === " ") {
