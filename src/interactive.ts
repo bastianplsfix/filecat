@@ -99,8 +99,8 @@ async function buildTree(rootPath: string, cwd: string): Promise<TreeItem[]> {
       name,
       isDirectory: entry.isDirectory,
       depth,
-      selected: true,
-      expanded: depth < 1, // Expand first level by default
+      selected: false, // Nothing selected by default
+      expanded: false, // All folders collapsed by default
       children: entry.isDirectory ? [] : undefined,
     };
 
@@ -143,17 +143,36 @@ function flattenTree(items: TreeItem[]): TreeItem[] {
 }
 
 /**
- * Toggle selection of an item and its children
+ * Toggle selection of an item and its children, then update parent state
  */
 function toggleSelection(item: TreeItem, selected?: boolean) {
   const newState = selected ?? !item.selected;
   item.selected = newState;
 
+  // Update all children
   if (item.children) {
     for (const child of item.children) {
       toggleSelection(child, newState);
     }
   }
+
+  // Update parent folder selection state
+  updateParentSelection(item.parent);
+}
+
+/**
+ * Update parent folder selection based on children state
+ */
+function updateParentSelection(parent: TreeItem | undefined) {
+  if (!parent) return;
+
+  // A folder is selected if all its children are selected
+  const allChildrenSelected =
+    parent.children?.every((child) => child.selected) ?? false;
+  parent.selected = allChildrenSelected;
+
+  // Recursively update grandparents
+  updateParentSelection(parent.parent);
 }
 
 /**
@@ -274,6 +293,7 @@ function render(
   terminalHeight: number,
   scrollOffset: number,
   outputMode: OutputMode,
+  showHelp: boolean,
 ): string {
   const lines: string[] = [];
 
@@ -281,18 +301,22 @@ function render(
   lines.push("");
   lines.push(bold(" filecat ") + dim("- Select files to concatenate"));
   lines.push("");
-  lines.push(
-    dim(
-      " [space] toggle  [a] toggle all  [o] output mode  [enter] confirm  [q] quit",
-    ),
-  );
-  lines.push(
-    dim(
-      " [↑/↓] navigate  [←/→] collapse/expand  [e] expand all  [c] collapse all  [f/F] jump folder",
-    ),
-  );
-  lines.push("");
-  lines.push(" Output: " + formatOutputMode(outputMode));
+
+  if (showHelp) {
+    lines.push(
+      dim(
+        " [space] toggle  [a] toggle all  [o] output  [enter] confirm  [q] quit",
+      ),
+    );
+    lines.push(
+      dim(
+        " [↑/↓] navigate  [←/→] collapse/expand  [e] expand all  [c] collapse all  [f/F] jump folder",
+      ),
+    );
+    lines.push("");
+  }
+
+  lines.push(" Output: " + formatOutputMode(outputMode) + dim("    [?] help"));
   lines.push("");
 
   const headerLines = lines.length;
@@ -376,7 +400,8 @@ export async function runInteractive(
 
   let cursorIndex = 0;
   let scrollOffset = 0;
-  let outputMode: OutputMode = "stdout";
+  let outputMode: OutputMode = "clipboard"; // Default to clipboard
+  let showHelp = false;
 
   // Get terminal size
   const getTerminalSize = () => {
@@ -416,6 +441,7 @@ export async function runInteractive(
           terminalHeight,
           scrollOffset,
           outputMode,
+          showHelp,
         ),
       );
 
@@ -442,6 +468,11 @@ export async function runInteractive(
       if (input === "o") {
         // O - cycle output mode
         outputMode = nextOutputMode(outputMode);
+      }
+
+      if (input === "?") {
+        // ? - toggle help
+        showHelp = !showHelp;
       }
 
       if (input === " ") {
