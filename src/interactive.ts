@@ -348,6 +348,45 @@ function formatOutputMode(mode: OutputMode): string {
 }
 
 /**
+ * Filter tree items based on search query
+ */
+function filterTree(items: TreeItem[], query: string): TreeItem[] {
+  if (!query) return items;
+
+  const lowerQuery = query.toLowerCase();
+
+  function matchesQuery(item: TreeItem): boolean {
+    return item.name.toLowerCase().includes(lowerQuery) ||
+      item.relativePath.toLowerCase().includes(lowerQuery);
+  }
+
+  function filterItems(items: TreeItem[]): TreeItem[] {
+    const result: TreeItem[] = [];
+
+    for (const item of items) {
+      if (item.isDirectory && item.children) {
+        const filteredChildren = filterItems(item.children);
+        if (filteredChildren.length > 0 || matchesQuery(item)) {
+          // Create a copy with filtered children
+          const filteredItem: TreeItem = {
+            ...item,
+            children: filteredChildren,
+            expanded: true, // Auto-expand matching directories
+          };
+          result.push(filteredItem);
+        }
+      } else if (matchesQuery(item)) {
+        result.push(item);
+      }
+    }
+
+    return result;
+  }
+
+  return filterItems(items);
+}
+
+/**
  * Render the tree view
  */
 function render(
@@ -358,6 +397,8 @@ function render(
   outputMode: OutputMode,
   showHelp: boolean,
   showIgnored: boolean,
+  searchMode: boolean,
+  searchQuery: string,
 ): string {
   const lines: string[] = [];
 
@@ -377,6 +418,11 @@ function render(
         " [↑/↓] navigate  [←/→] collapse/expand  [e] expand all  [c] collapse all  [f/F] jump folder",
       ),
     );
+    lines.push(
+      dim(
+        " [/] search  [esc] clear search",
+      ),
+    );
     lines.push("");
   }
 
@@ -387,6 +433,18 @@ function render(
     " Output: " + formatOutputMode(outputMode) + "  " + ignoredStatus +
       dim("  [?] help"),
   );
+
+  // Search bar
+  if (searchMode) {
+    lines.push("");
+    lines.push(inverse(" / ") + " " + searchQuery + inverse(" "));
+  } else if (searchQuery) {
+    lines.push("");
+    lines.push(
+      dim(" Filter: ") + cyan(searchQuery) + dim("  [esc] clear  [/] edit"),
+    );
+  }
+
   lines.push("");
 
   const headerLines = lines.length;
@@ -465,6 +523,8 @@ export async function runInteractive(
   let outputMode: OutputMode = "clipboard"; // Default to clipboard
   let showHelp = false;
   let showIgnored = false;
+  let searchMode = false;
+  let searchQuery = "";
 
   // Build initial tree
   let tree = await buildTree(absoluteRoot, cwd, showIgnored);
@@ -492,8 +552,15 @@ export async function runInteractive(
 
   try {
     while (true) {
-      const flatItems = flattenTree(tree);
+      // Apply search filter
+      const filteredTree = searchQuery ? filterTree(tree, searchQuery) : tree;
+      const flatItems = flattenTree(filteredTree);
       const terminalHeight = getTerminalSize();
+
+      // Ensure cursor is within bounds after filtering
+      if (cursorIndex >= flatItems.length) {
+        cursorIndex = Math.max(0, flatItems.length - 1);
+      }
 
       // Adjust scroll to keep cursor visible
       const visibleHeight = terminalHeight - 10;
@@ -514,6 +581,8 @@ export async function runInteractive(
           outputMode,
           showHelp,
           showIgnored,
+          searchMode,
+          searchQuery,
         ),
       );
 
@@ -522,6 +591,28 @@ export async function runInteractive(
       if (bytesRead === null) break;
 
       const input = decoder.decode(buffer.subarray(0, bytesRead));
+
+      // Handle search mode input
+      if (searchMode) {
+        if (input === "\x1b" || input === "\x1b\x1b") {
+          // Escape - exit search mode
+          searchMode = false;
+        } else if (input === "\r" || input === "\n") {
+          // Enter - confirm search and exit search mode
+          searchMode = false;
+        } else if (input === "\x7f" || input === "\b") {
+          // Backspace - remove last character
+          searchQuery = searchQuery.slice(0, -1);
+          cursorIndex = 0;
+          scrollOffset = 0;
+        } else if (input.length === 1 && input >= " " && input <= "~") {
+          // Printable character - add to search
+          searchQuery += input;
+          cursorIndex = 0;
+          scrollOffset = 0;
+        }
+        continue;
+      }
 
       // Handle input
       if (input === "q" || input === "\x03") {
@@ -535,6 +626,22 @@ export async function runInteractive(
           files: getSelectedFiles(tree, cwd),
           outputMode,
         };
+      }
+
+      if (input === "/") {
+        // / - enter search mode
+        searchMode = true;
+        continue;
+      }
+
+      if (input === "\x1b" || input === "\x1b\x1b") {
+        // Escape - clear search
+        if (searchQuery) {
+          searchQuery = "";
+          cursorIndex = 0;
+          scrollOffset = 0;
+        }
+        continue;
       }
 
       if (input === "o") {
@@ -564,9 +671,17 @@ export async function runInteractive(
       }
 
       if (input === "a") {
-        // A - toggle all
-        const allSel = allSelected(tree);
-        toggleAll(tree, !allSel);
+        // A - toggle all visible (filtered) items
+        if (searchQuery) {
+          // When filtering, toggle all visible items
+          const allSel = flatItems.every((item) => item.selected);
+          for (const item of flatItems) {
+            toggleSelection(item, !allSel);
+          }
+        } else {
+          const allSel = allSelected(tree);
+          toggleAll(tree, !allSel);
+        }
       }
 
       if (input === "\x1b[A") {
